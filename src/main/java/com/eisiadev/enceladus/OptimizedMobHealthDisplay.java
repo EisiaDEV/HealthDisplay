@@ -56,8 +56,7 @@ public class OptimizedMobHealthDisplay extends JavaPlugin implements Listener {
     private static final double HEIGHT_OFFSET = 0.3;
     private static final double MOVEMENT_THRESHOLD = 0.01;
     private static final double BABY_SCALE = 0.5;
-
-    // 기준 값들
+    
     private static final double BASE_HEIGHT = 1.8;
     private static final float BASE_SCALE = 1.2f;
 
@@ -195,8 +194,6 @@ public class OptimizedMobHealthDisplay extends JavaPlugin implements Listener {
         }
 
         display.text(createHealthComponent(mob));
-
-        // 크기 업데이트
         float scale = calculateScale(mob);
         Transformation transformation = display.getTransformation();
         transformation.getScale().set(scale, scale, scale);
@@ -263,16 +260,10 @@ public class OptimizedMobHealthDisplay extends JavaPlugin implements Listener {
 
         return height;
     }
-
-    // 몹의 크기에 비례한 스케일 계산
     private float calculateScale(LivingEntity mob) {
         double entityHeight = getEntityHeight(mob);
         double ratio = entityHeight / BASE_HEIGHT;
-
-        // 기준 스케일에 비율을 곱함
         float scale = (float) (BASE_SCALE * ratio);
-
-        // 너무 작거나 큰 값 제한 (선택사항)
         scale = Math.max(1.2f, Math.min(scale, 15.0f));
 
         return scale;
@@ -617,4 +608,5 @@ public class OptimizedMobHealthDisplay extends JavaPlugin implements Listener {
             }, 1L);
         }
     }
+
 }
