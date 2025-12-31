@@ -23,6 +23,7 @@ public class DisplayManager {
     private final NamespacedKey healthDisplayTag;
     private BukkitTask updateTask;
     private BukkitTask slowScanTask;
+    private BukkitTask cacheCleanupTask;
 
     public DisplayManager(Plugin plugin, DisplayFactory displayFactory, HealthDisplayConfig config) {
         this.plugin = plugin;
@@ -38,13 +39,13 @@ public class DisplayManager {
     public void startUpdateTasks() {
         startUpdateTask();
         startSlowScanTask();
+        startCacheCleanupTask();
     }
 
     private void startUpdateTask() {
         updateTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
             long now = System.currentTimeMillis();
 
-            // 타임아웃된 processing mobs 제거
             processingMobs.removeIf(uuid -> {
                 MobDataCache cache = cachedData.get(uuid);
                 return cache != null && now - cache.getCreationTime() > config.getProcessingTimeout();
@@ -83,6 +84,7 @@ public class DisplayManager {
                 cachedData.remove(uuid);
                 processingMobs.remove(uuid);
                 displayFactory.invalidateHeightCache(uuid);
+                displayFactory.invalidateHealthCache(uuid);
             });
 
         }, 0L, config.getUpdateInterval());
@@ -98,6 +100,12 @@ public class DisplayManager {
                                         && !processingMobs.contains(mob.getUniqueId()))
                                 .forEach(this::scheduleDisplayCreation)
                 ), config.getSlowScanInterval(), config.getSlowScanInterval());
+    }
+
+    private void startCacheCleanupTask() {
+        cacheCleanupTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+            displayFactory.getHealthFormatter().cleanupCache();
+        }, 20L, 20L);
     }
 
     public void createDisplaysForExistingMobs() {
@@ -176,6 +184,7 @@ public class DisplayManager {
         cachedData.remove(mobId);
         processingMobs.remove(mobId);
         displayFactory.invalidateHeightCache(mobId);
+        displayFactory.invalidateHealthCache(mobId);
     }
 
     public void removeAllExistingDisplays() {
@@ -190,6 +199,7 @@ public class DisplayManager {
     public void shutdown() {
         if (updateTask != null) updateTask.cancel();
         if (slowScanTask != null) slowScanTask.cancel();
+        if (cacheCleanupTask != null) cacheCleanupTask.cancel();
 
         displays.values().forEach(d -> {
             if (d.isValid()) d.remove();

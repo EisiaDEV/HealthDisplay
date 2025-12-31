@@ -95,14 +95,22 @@ public class DisplayFactory {
         heightCache.remove(mobId);
     }
 
+    public void invalidateHealthCache(UUID mobId) {
+        healthFormatter.invalidateCache(mobId);
+    }
+
     public void clearCaches() {
         heightCache.clear();
+        healthFormatter.clearCache();
+    }
+
+    public HealthFormatter getHealthFormatter() {
+        return healthFormatter;
     }
 
     private record HeightCache(double height) {
-
         boolean isDirty() {
-                return false;
-            }
+            return false;
         }
+    }
 }

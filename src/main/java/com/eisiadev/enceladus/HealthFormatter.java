@@ -8,6 +8,8 @@ import org.bukkit.entity.LivingEntity;
 
 import java.text.DecimalFormat;
 import java.util.Objects;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class HealthFormatter {
 
@@ -22,17 +24,58 @@ public class HealthFormatter {
     private static final DecimalFormat FORMATTER = new DecimalFormat("#.#");
     private static final DecimalFormat COMMA_FORMATTER = new DecimalFormat("#,###.#");
 
+    private final ConcurrentHashMap<UUID, ComponentCache> componentCache = new ConcurrentHashMap<>();
+
+    private static class ComponentCache {
+        final Component component;
+        final double health;
+        final double maxHealth;
+        final Component customName;
+        final long timestamp;
+
+        ComponentCache(Component component, double health, double maxHealth, Component customName) {
+            this.component = component;
+            this.health = health;
+            this.maxHealth = maxHealth;
+            this.customName = customName;
+            this.timestamp = System.currentTimeMillis();
+        }
+
+        boolean isValid(double currentHealth, double currentMaxHealth, Component currentCustomName, long now) {
+            return (now - timestamp < 100) &&
+                    Math.abs(health - currentHealth) < 0.01 &&
+                    Math.abs(maxHealth - currentMaxHealth) < 0.01 &&
+                    Objects.equals(customName, currentCustomName);
+        }
+    }
+
     public Component createHealthComponent(LivingEntity mob) {
+        UUID mobId = mob.getUniqueId();
         double health = mob.getHealth();
         double maxHealth = mob.getMaxHealth();
+        long now = System.currentTimeMillis();
+
+        Component customName = mob.customName();
+
+        ComponentCache cached = componentCache.get(mobId);
+        if (cached != null && cached.isValid(health, maxHealth, customName, now)) {
+            return cached.component;
+        }
+
+        Component component = buildHealthComponent(health, maxHealth, customName, mob);
+        componentCache.put(mobId, new ComponentCache(component, health, maxHealth, customName));
+
+        return component;
+    }
+
+    private Component buildHealthComponent(double health, double maxHealth, Component customName, LivingEntity mob) {
         double ratio = health / maxHealth;
 
         TextColor healthColor = ratio > 0.6667 ? NamedTextColor.GREEN :
-                ratio > 0.3333 ? NamedTextColor.YELLOW :
-                        NamedTextColor.RED;
+                ratio > 0.3333 ? NamedTextColor.YELLOW : NamedTextColor.RED;
 
-        Component nameComponent = mob.customName() != null ?
-                mob.customName() : Component.text(mob.getType().name(), NamedTextColor.WHITE);
+        Component nameComponent = customName != null ?
+                customName : Component.text(mob.getType().name(), NamedTextColor.WHITE);
 
         return Objects.requireNonNull(nameComponent)
                 .decoration(TextDecoration.ITALIC, false)
@@ -57,5 +100,20 @@ public class HealthFormatter {
         }
 
         return FORMATTER.format(value / VALUES[0]) + UNITS[0];
+    }
+
+    public void cleanupCache() {
+        long now = System.currentTimeMillis();
+        componentCache.entrySet().removeIf(entry ->
+                now - entry.getValue().timestamp > 1000
+        );
+    }
+
+    public void invalidateCache(UUID mobId) {
+        componentCache.remove(mobId);
+    }
+
+    public void clearCache() {
+        componentCache.clear();
     }
 }
