@@ -16,7 +16,7 @@ public class DisplayManager {
     private final DisplayFactory displayFactory;
     private final HealthDisplayConfig config;
 
-    private final Map<UUID, TextDisplay> displays = new ConcurrentHashMap<>();
+    private final Map<UUID, DisplayFactory.DisplayPair> displays = new ConcurrentHashMap<>();
     private final Map<UUID, MobDataCache> cachedData = new ConcurrentHashMap<>();
     private final Set<UUID> processingMobs = ConcurrentHashMap.newKeySet();
 
@@ -53,39 +53,33 @@ public class DisplayManager {
 
             List<UUID> toRemove = new ArrayList<>();
 
-            displays.forEach((mobId, display) -> {
-                if (!display.isValid()) {
+            displays.forEach((mobId, displayPair) -> {
+                if (!displayPair.isValid()) {
                     toRemove.add(mobId);
                     return;
                 }
 
                 Entity entity = Bukkit.getEntity(mobId);
                 if (entity == null || !entity.isValid() || entity.isDead()) {
-                    display.remove();
+                    displayPair.remove();
                     toRemove.add(mobId);
                     return;
                 }
 
                 if (!(entity instanceof LivingEntity mob) || !shouldDisplayHealth(mob)) {
-                    display.remove();
+                    displayPair.remove();
                     toRemove.add(mobId);
                     return;
                 }
 
                 MobDataCache cache = cachedData.get(mobId);
                 if (cache == null || cache.needsUpdate(mob, config.getMovementThreshold())) {
-                    displayFactory.updateDisplay(mob, display);
+                    displayFactory.updateDisplay(mob, displayPair);
                     cachedData.put(mobId, new MobDataCache(mob));
                 }
             });
 
-            toRemove.forEach(uuid -> {
-                displays.remove(uuid);
-                cachedData.remove(uuid);
-                processingMobs.remove(uuid);
-                displayFactory.invalidateHeightCache(uuid);
-                displayFactory.invalidateHealthCache(uuid);
-            });
+            toRemove.forEach(this::cleanupDisplay);
 
         }, 0L, config.getUpdateInterval());
     }
@@ -105,6 +99,7 @@ public class DisplayManager {
     private void startCacheCleanupTask() {
         cacheCleanupTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
             displayFactory.getHealthFormatter().cleanupCache();
+            displayFactory.getHealthBarFormatter().cleanupCache();
         }, 20L, 20L);
     }
 
@@ -163,24 +158,29 @@ public class DisplayManager {
     }
 
     private void createDisplayForMob(LivingEntity mob) {
-        TextDisplay display = displayFactory.createDisplay(mob);
-        displays.put(mob.getUniqueId(), display);
+        DisplayFactory.DisplayPair displayPair = displayFactory.createDisplay(mob);
+        displays.put(mob.getUniqueId(), displayPair);
         cachedData.put(mob.getUniqueId(), new MobDataCache(mob));
     }
 
     public void updateDisplayForMob(LivingEntity mob) {
-        TextDisplay display = displays.get(mob.getUniqueId());
-        if (display != null && display.isValid()) {
-            displayFactory.updateDisplay(mob, display);
+        DisplayFactory.DisplayPair displayPair = displays.get(mob.getUniqueId());
+        if (displayPair != null && displayPair.isValid()) {
+            displayFactory.updateDisplay(mob, displayPair);
             cachedData.put(mob.getUniqueId(), new MobDataCache(mob));
         }
     }
 
     public void removeDisplay(UUID mobId) {
-        TextDisplay display = displays.remove(mobId);
-        if (display != null) {
-            display.remove();
+        DisplayFactory.DisplayPair displayPair = displays.remove(mobId);
+        if (displayPair != null) {
+            displayPair.remove();
         }
+        cleanupDisplay(mobId);
+    }
+
+    private void cleanupDisplay(UUID mobId) {
+        displays.remove(mobId);
         cachedData.remove(mobId);
         processingMobs.remove(mobId);
         displayFactory.invalidateHeightCache(mobId);
@@ -201,9 +201,7 @@ public class DisplayManager {
         if (slowScanTask != null) slowScanTask.cancel();
         if (cacheCleanupTask != null) cacheCleanupTask.cancel();
 
-        displays.values().forEach(d -> {
-            if (d.isValid()) d.remove();
-        });
+        displays.values().forEach(DisplayFactory.DisplayPair::remove);
 
         displays.clear();
         cachedData.clear();

@@ -17,19 +17,22 @@ public class DisplayFactory {
     private final HealthDisplayConfig config;
     private final EntityHeightCalculator heightCalculator;
     private final HealthFormatter healthFormatter;
+    private final HealthBarFormatter healthBarFormatter;
     private final Map<UUID, HeightCache> heightCache = new ConcurrentHashMap<>();
 
     public DisplayFactory(HealthDisplayConfig config, EntityHeightCalculator heightCalculator) {
         this.config = config;
         this.heightCalculator = heightCalculator;
         this.healthFormatter = new HealthFormatter();
+        this.healthBarFormatter = new HealthBarFormatter();
     }
 
-    public TextDisplay createDisplay(LivingEntity mob) {
+    public DisplayPair createDisplay(LivingEntity mob) {
         Location loc = calculateDisplayLocation(mob);
         float scale = calculateScale(mob);
 
-        return mob.getWorld().spawn(loc, TextDisplay.class, d -> {
+        // 이름 + 체력바 (그림자 O)
+        TextDisplay nameWithBarDisplay = mob.getWorld().spawn(loc, TextDisplay.class, d -> {
             d.getPersistentDataContainer().set(
                     heightCalculator.getHealthDisplayTag(),
                     PersistentDataType.BYTE,
@@ -40,6 +43,32 @@ public class DisplayFactory {
             d.setShadowed(true);
             d.setTeleportDuration(config.getTeleportDuration());
             d.setSeeThrough(false);
+
+            // 이름과 체력바를 합침 (이름 위, 체력바 아래)
+            d.text(healthFormatter.createNameComponent(mob)
+                    .append(net.kyori.adventure.text.Component.newline())
+                    .append(healthBarFormatter.createHealthBarComponent(mob)));
+
+            d.setBackgroundColor(Color.fromARGB(0, 0, 0, 0));
+
+            Transformation transformation = d.getTransformation();
+            transformation.getScale().set(scale, scale, scale);
+            transformation.getTranslation().set(0, 0, -0.01f);
+            d.setTransformation(transformation);
+        });
+
+        // 체력 숫자 (그림자 X)
+        TextDisplay healthDisplay = mob.getWorld().spawn(loc, TextDisplay.class, d -> {
+            d.getPersistentDataContainer().set(
+                    heightCalculator.getHealthDisplayTag(),
+                    PersistentDataType.BYTE,
+                    (byte) 1
+            );
+            d.setBillboard(Display.Billboard.CENTER);
+            d.setDefaultBackground(false);
+            d.setShadowed(false);
+            d.setTeleportDuration(config.getTeleportDuration());
+            d.setSeeThrough(false);
             d.text(healthFormatter.createHealthComponent(mob));
             d.setBackgroundColor(Color.fromARGB(0, 0, 0, 0));
 
@@ -47,23 +76,41 @@ public class DisplayFactory {
             transformation.getScale().set(scale, scale, scale);
             d.setTransformation(transformation);
         });
+
+        return new DisplayPair(nameWithBarDisplay, healthDisplay);
     }
 
-    public void updateDisplay(LivingEntity mob, TextDisplay display) {
+    public void updateDisplay(LivingEntity mob, DisplayPair displayPair) {
         Location targetLoc = calculateDisplayLocation(mob);
-        Location currentLoc = display.getLocation();
+        Location currentLoc = displayPair.healthDisplay().getLocation();
         double distSq = currentLoc.distanceSquared(targetLoc);
 
         if (distSq > config.getMovementThreshold() * config.getMovementThreshold()) {
-            display.teleport(targetLoc);
+            displayPair.nameWithBarDisplay().teleport(targetLoc);
+            displayPair.healthDisplay().teleport(targetLoc);
         }
 
-        display.text(healthFormatter.createHealthComponent(mob));
+        // 이름 + 체력바 업데이트
+        displayPair.nameWithBarDisplay().text(
+                healthFormatter.createNameComponent(mob)
+                        .append(net.kyori.adventure.text.Component.newline())
+                        .append(healthBarFormatter.createHealthBarComponent(mob))
+        );
 
+        // 체력 숫자 업데이트
+        displayPair.healthDisplay().text(healthFormatter.createHealthComponent(mob));
+
+        // 스케일 업데이트
         float scale = calculateScale(mob);
-        Transformation transformation = display.getTransformation();
-        transformation.getScale().set(scale, scale, scale);
-        display.setTransformation(transformation);
+
+        Transformation nameBarTransformation = displayPair.nameWithBarDisplay().getTransformation();
+        nameBarTransformation.getScale().set(scale, scale, scale);
+        nameBarTransformation.getTranslation().set(0, 0, -0.01f);
+        displayPair.nameWithBarDisplay().setTransformation(nameBarTransformation);
+
+        Transformation healthTransformation = displayPair.healthDisplay().getTransformation();
+        healthTransformation.getScale().set(scale, scale, scale);
+        displayPair.healthDisplay().setTransformation(healthTransformation);
     }
 
     private Location calculateDisplayLocation(LivingEntity mob) {
@@ -97,20 +144,37 @@ public class DisplayFactory {
 
     public void invalidateHealthCache(UUID mobId) {
         healthFormatter.invalidateCache(mobId);
+        healthBarFormatter.invalidateCache(mobId);
     }
 
     public void clearCaches() {
         heightCache.clear();
         healthFormatter.clearCache();
+        healthBarFormatter.clearCache();
     }
 
     public HealthFormatter getHealthFormatter() {
         return healthFormatter;
     }
 
+    public HealthBarFormatter getHealthBarFormatter() {
+        return healthBarFormatter;
+    }
+
     private record HeightCache(double height) {
         boolean isDirty() {
             return false;
+        }
+    }
+
+    public record DisplayPair(TextDisplay nameWithBarDisplay, TextDisplay healthDisplay) {
+        public boolean isValid() {
+            return nameWithBarDisplay.isValid() && healthDisplay.isValid();
+        }
+
+        public void remove() {
+            if (nameWithBarDisplay.isValid()) nameWithBarDisplay.remove();
+            if (healthDisplay.isValid()) healthDisplay.remove();
         }
     }
 }
