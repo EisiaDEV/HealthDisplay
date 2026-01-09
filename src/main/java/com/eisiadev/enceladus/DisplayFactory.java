@@ -27,12 +27,12 @@ public class DisplayFactory {
         this.healthBarFormatter = new HealthBarFormatter();
     }
 
+
     public DisplayPair createDisplay(LivingEntity mob) {
         Location loc = calculateDisplayLocation(mob);
         float scale = calculateScale(mob);
 
-        // 이름 + 체력바 (그림자 O)
-        TextDisplay nameWithBarDisplay = mob.getWorld().spawn(loc, TextDisplay.class, d -> {
+        TextDisplay singleDisplay = mob.getWorld().spawn(loc, TextDisplay.class, d -> {
             d.getPersistentDataContainer().set(
                     heightCalculator.getHealthDisplayTag(),
                     PersistentDataType.BYTE,
@@ -44,8 +44,9 @@ public class DisplayFactory {
             d.setTeleportDuration(config.getTeleportDuration());
             d.setSeeThrough(false);
 
-            // 이름과 체력바를 합침 (이름 위, 체력바 아래)
             d.text(healthFormatter.createNameComponent(mob)
+                    .append(net.kyori.adventure.text.Component.newline())
+                    .append(healthFormatter.createHealthComponent(mob))
                     .append(net.kyori.adventure.text.Component.newline())
                     .append(healthBarFormatter.createHealthBarComponent(mob)));
 
@@ -53,31 +54,10 @@ public class DisplayFactory {
 
             Transformation transformation = d.getTransformation();
             transformation.getScale().set(scale, scale, scale);
-            transformation.getTranslation().set(0, 0, -0.01f);
             d.setTransformation(transformation);
         });
 
-        // 체력 숫자 (그림자 X)
-        TextDisplay healthDisplay = mob.getWorld().spawn(loc, TextDisplay.class, d -> {
-            d.getPersistentDataContainer().set(
-                    heightCalculator.getHealthDisplayTag(),
-                    PersistentDataType.BYTE,
-                    (byte) 1
-            );
-            d.setBillboard(Display.Billboard.CENTER);
-            d.setDefaultBackground(false);
-            d.setShadowed(false);
-            d.setTeleportDuration(config.getTeleportDuration());
-            d.setSeeThrough(false);
-            d.text(healthFormatter.createHealthComponent(mob));
-            d.setBackgroundColor(Color.fromARGB(0, 0, 0, 0));
-
-            Transformation transformation = d.getTransformation();
-            transformation.getScale().set(scale, scale, scale);
-            d.setTransformation(transformation);
-        });
-
-        return new DisplayPair(nameWithBarDisplay, healthDisplay);
+        return new DisplayPair(singleDisplay, singleDisplay);
     }
 
     public void updateDisplay(LivingEntity mob, DisplayPair displayPair) {
@@ -86,31 +66,23 @@ public class DisplayFactory {
         double distSq = currentLoc.distanceSquared(targetLoc);
 
         if (distSq > config.getMovementThreshold() * config.getMovementThreshold()) {
-            displayPair.nameWithBarDisplay().teleport(targetLoc);
             displayPair.healthDisplay().teleport(targetLoc);
         }
 
-        // 이름 + 체력바 업데이트
-        displayPair.nameWithBarDisplay().text(
+        // 단일 디스플레이 업데이트: 이름 + 체력 + 체력바
+        displayPair.healthDisplay().text(
                 healthFormatter.createNameComponent(mob)
+                        .append(net.kyori.adventure.text.Component.newline())
+                        .append(healthFormatter.createHealthComponent(mob))
                         .append(net.kyori.adventure.text.Component.newline())
                         .append(healthBarFormatter.createHealthBarComponent(mob))
         );
 
-        // 체력 숫자 업데이트
-        displayPair.healthDisplay().text(healthFormatter.createHealthComponent(mob));
-
         // 스케일 업데이트
         float scale = calculateScale(mob);
-
-        Transformation nameBarTransformation = displayPair.nameWithBarDisplay().getTransformation();
-        nameBarTransformation.getScale().set(scale, scale, scale);
-        nameBarTransformation.getTranslation().set(0, 0, -0.01f);
-        displayPair.nameWithBarDisplay().setTransformation(nameBarTransformation);
-
-        Transformation healthTransformation = displayPair.healthDisplay().getTransformation();
-        healthTransformation.getScale().set(scale, scale, scale);
-        displayPair.healthDisplay().setTransformation(healthTransformation);
+        Transformation transformation = displayPair.healthDisplay().getTransformation();
+        transformation.getScale().set(scale, scale, scale);
+        displayPair.healthDisplay().setTransformation(transformation);
     }
 
     private Location calculateDisplayLocation(LivingEntity mob) {
@@ -169,11 +141,10 @@ public class DisplayFactory {
 
     public record DisplayPair(TextDisplay nameWithBarDisplay, TextDisplay healthDisplay) {
         public boolean isValid() {
-            return nameWithBarDisplay.isValid() && healthDisplay.isValid();
+            return healthDisplay.isValid();
         }
 
         public void remove() {
-            if (nameWithBarDisplay.isValid()) nameWithBarDisplay.remove();
             if (healthDisplay.isValid()) healthDisplay.remove();
         }
     }

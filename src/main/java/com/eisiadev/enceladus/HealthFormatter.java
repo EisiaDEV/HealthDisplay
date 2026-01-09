@@ -13,11 +13,11 @@ import java.util.concurrent.ConcurrentHashMap;
 public class HealthFormatter {
 
     private static final double[] VALUES = {
-            1.0E21, 1.0E18, 1.0E15, 1.0E12, 1.0E9, 1.0E6, 1.0E3
+            1.0E28, 1.0E24, 1.0E20, 1.0E16, 1.0E12, 1.0E8, 1.0E4
     };
 
     private static final String[] UNITS = {
-            "\uE046", "\uE045", "\uE044", "\uE043", "\uE042", "\uE041", "\uE040"
+            "양", "자", "해", "경", "조", "억", "만"
     };
 
     private static final DecimalFormat FORMATTER = new DecimalFormat("#.#");
@@ -69,14 +69,17 @@ public class HealthFormatter {
     public Component createHealthComponent(LivingEntity mob) {
         UUID mobId = mob.getUniqueId();
         double health = mob.getHealth();
+        double maxHealth = mob.getMaxHealth();
         long now = System.currentTimeMillis();
 
         ComponentCache cached = healthCache.get(mobId);
-        if (cached != null && cached.isValid(health, null, now)) {
+        if (cached != null && cached.isValid(health, null, now) && cached.health == maxHealth) {
             return cached.component;
         }
 
         Component component = Component.text(formatHealth(health), NamedTextColor.WHITE)
+                .append(Component.text(" | ", NamedTextColor.GRAY))
+                .append(Component.text(formatHealth(maxHealth), NamedTextColor.WHITE))
                 .decoration(TextDecoration.ITALIC, false);
 
         healthCache.put(mobId, new ComponentCache(component, health, null));
