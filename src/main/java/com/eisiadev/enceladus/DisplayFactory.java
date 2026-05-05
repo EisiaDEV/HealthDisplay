@@ -17,16 +17,13 @@ public class DisplayFactory {
     private final HealthDisplayConfig config;
     private final EntityHeightCalculator heightCalculator;
     private final HealthFormatter healthFormatter;
-    private final HealthBarFormatter healthBarFormatter;
     private final Map<UUID, HeightCache> heightCache = new ConcurrentHashMap<>();
 
     public DisplayFactory(HealthDisplayConfig config, EntityHeightCalculator heightCalculator) {
         this.config = config;
         this.heightCalculator = heightCalculator;
         this.healthFormatter = new HealthFormatter();
-        this.healthBarFormatter = new HealthBarFormatter();
     }
-
 
     public DisplayPair createDisplay(LivingEntity mob) {
         Location loc = calculateDisplayLocation(mob);
@@ -46,9 +43,7 @@ public class DisplayFactory {
 
             d.text(healthFormatter.createNameComponent(mob)
                     .append(net.kyori.adventure.text.Component.newline())
-                    .append(healthFormatter.createHealthComponent(mob))
-                    .append(net.kyori.adventure.text.Component.newline())
-                    .append(healthBarFormatter.createHealthBarComponent(mob)));
+                    .append(healthFormatter.createHealthComponent(mob)));
 
             d.setBackgroundColor(Color.fromARGB(0, 0, 0, 0));
 
@@ -69,16 +64,12 @@ public class DisplayFactory {
             displayPair.healthDisplay().teleport(targetLoc);
         }
 
-        // 단일 디스플레이 업데이트: 이름 + 체력 + 체력바
         displayPair.healthDisplay().text(
                 healthFormatter.createNameComponent(mob)
                         .append(net.kyori.adventure.text.Component.newline())
                         .append(healthFormatter.createHealthComponent(mob))
-                        .append(net.kyori.adventure.text.Component.newline())
-                        .append(healthBarFormatter.createHealthBarComponent(mob))
         );
 
-        // 스케일 업데이트
         float scale = calculateScale(mob);
         Transformation transformation = displayPair.healthDisplay().getTransformation();
         transformation.getScale().set(scale, scale, scale);
@@ -102,10 +93,12 @@ public class DisplayFactory {
         return loc;
     }
 
+    private static final float BAR_SCALE_FACTOR = 0.75f;
+
     private float calculateScale(LivingEntity mob) {
         double entityHeight = heightCalculator.getEntityHeight(mob);
         double ratio = entityHeight / config.getBaseHeight();
-        float scale = (float) (config.getBaseScale() * ratio);
+        float scale = (float) (config.getBaseScale() * ratio) * BAR_SCALE_FACTOR;
 
         return Math.max(config.getMinScale(), Math.min(scale, config.getMaxScale()));
     }
@@ -116,21 +109,15 @@ public class DisplayFactory {
 
     public void invalidateHealthCache(UUID mobId) {
         healthFormatter.invalidateCache(mobId);
-        healthBarFormatter.invalidateCache(mobId);
     }
 
     public void clearCaches() {
         heightCache.clear();
         healthFormatter.clearCache();
-        healthBarFormatter.clearCache();
     }
 
     public HealthFormatter getHealthFormatter() {
         return healthFormatter;
-    }
-
-    public HealthBarFormatter getHealthBarFormatter() {
-        return healthBarFormatter;
     }
 
     private record HeightCache(double height) {

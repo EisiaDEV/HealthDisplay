@@ -97,10 +97,9 @@ public class DisplayManager {
     }
 
     private void startCacheCleanupTask() {
-        cacheCleanupTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-            displayFactory.getHealthFormatter().cleanupCache();
-            displayFactory.getHealthBarFormatter().cleanupCache();
-        }, 20L, 20L);
+        cacheCleanupTask = Bukkit.getScheduler().runTaskTimer(plugin, () ->
+                displayFactory.getHealthFormatter().cleanupCache(),
+                20L, 20L);
     }
 
     public void createDisplaysForExistingMobs() {
